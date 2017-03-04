@@ -1,4 +1,3 @@
-
 #include <SoftwareSerial.h>
 
 SoftwareSerial swSer(14, 12, false, 256);
