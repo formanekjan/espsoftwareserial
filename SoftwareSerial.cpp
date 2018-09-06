@@ -25,12 +25,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // must use some from the Espressif SDK as well
 extern "C" {
     #include "esp32-hal-gpio.h"
+	#include "soc\gpio_reg.h"
+	#include "soc\dport_access.h"
 }
 
 #include <SoftwareSerial.h>
 
 #define MAX_PIN 35
-#define DEFAULT_BUAD_RATE 9600
+#define DEFAULT_BUAD_RATE 9600 
+
+//create variable to hold register depending on port selection
+uint32_t CLEAR_INTERRUPT_REGISTER_ADDRESS;
 
 // As the Arduino attachInterrupt has no parameter, lists of objects
 // and callbacks corresponding to each possible GPIO pins have to be defined
@@ -107,6 +112,15 @@ static void (*ISRList[MAX_PIN+1])() = {
       sws_isr_35
 };
 
+void SoftwareSerial::setCorrespondingInterruptRegister(int pin) {
+   if(pin <= 31) {
+		CLEAR_INTERRUPT_REGISTER_ADDRESS = GPIO_STATUS_W1TC_REG;
+	}
+	else {
+		CLEAR_INTERRUPT_REGISTER_ADDRESS = GPIO_STATUS1_W1TC_REG;
+	}
+}
+
 SoftwareSerial::SoftwareSerial(int receivePin, int transmitPin, bool inverse_logic, unsigned int buffSize) {
    m_rxValid = m_txValid = m_txEnableValid = false;
    m_buffer = NULL;
@@ -114,6 +128,7 @@ SoftwareSerial::SoftwareSerial(int receivePin, int transmitPin, bool inverse_log
    m_overflow = false;
    m_rxEnabled = false;
    if (isValidGPIOpin(receivePin)) {
+	  setCorrespondingInterruptRegister(receivePin);
       m_rxPin = receivePin;
       m_buffSize = buffSize;
       m_buffer = (uint8_t*)malloc(m_buffSize);
@@ -142,6 +157,7 @@ SoftwareSerial::~SoftwareSerial() {
    if (m_buffer)
       free(m_buffer);
 }
+
 
 bool SoftwareSerial::isValidGPIOpin(int pin) {
    return (pin >= 0 && pin <= 5) || (pin >= 12 && pin <= MAX_PIN);
@@ -238,6 +254,8 @@ int SoftwareSerial::peek() {
 }
 
 void IRAM_ATTR SoftwareSerial::rxRead() {
+   enableRx(false); //disable interrupt //maybe using cli and sei instead
+   
    // Advance the starting point for the samples but compensate for the
    // initial delay which occurs before the interrupt is delivered
    unsigned long wait = m_bitTime + m_bitTime/3 - 500;
@@ -262,5 +280,7 @@ void IRAM_ATTR SoftwareSerial::rxRead() {
    }
    // Must clear this bit in the interrupt register,
    // it gets set even when interrupts are disabled
-   GPIO_REG_WRITE(GPIO.status_w1tc, 1 << m_rxPin);
+   _DPORT_WRITE_PERI_REG(CLEAR_INTERRUPT_REGISTER_ADDRESS, 1 << m_rxPin);
+    
+   enableRx(true); //reanable interrupt
 }

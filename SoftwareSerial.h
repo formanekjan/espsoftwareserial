@@ -66,6 +66,7 @@ public:
 
 private:
    bool isValidGPIOpin(int pin);
+   void setCorrespondingInterruptRegister(int pin);
 
    // Member variables
    int m_rxPin, m_txPin, m_txEnablePin;
